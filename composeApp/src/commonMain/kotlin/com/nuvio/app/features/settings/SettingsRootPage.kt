@@ -50,9 +50,15 @@ import nuvio.composeapp.generated.resources.updates_debug_test_description
 import nuvio.composeapp.generated.resources.updates_debug_test_title
 import nuvio.composeapp.generated.resources.about_supporters_contributors_subtitle
 import nuvio.composeapp.generated.resources.about_licenses_attributions_subtitle
+import nuvio.composeapp.generated.resources.about_youtube_title
+import nuvio.composeapp.generated.resources.about_youtube_description
+import nuvio.composeapp.generated.resources.about_instagram_title
+import nuvio.composeapp.generated.resources.about_instagram_description
 import org.jetbrains.compose.resources.stringResource
 
 private const val PRIVACY_POLICY_URL = "https://nuvio.tv/privacy-policy"
+private const val RAI_TV_YOUTUBE_URL = "https://www.youtube.com/@rajivlive143"
+private const val RAI_TV_INSTAGRAM_URL = "https://www.instagram.com/Rajivrai.07"
 
 internal fun LazyListScope.settingsRootContent(
     isTablet: Boolean,
@@ -197,6 +203,22 @@ internal fun LazyListScope.settingsRootContent(
                         icon = Icons.Rounded.Info,
                         isTablet = isTablet,
                         onClick = onLicensesAttributionsClick,
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.about_youtube_title),
+                        description = stringResource(Res.string.about_youtube_description),
+                        icon = Icons.Rounded.PlayArrow,
+                        isTablet = isTablet,
+                        onClick = { uriHandler.openUri(RAI_TV_YOUTUBE_URL) },
+                    )
+                    SettingsGroupDivider(isTablet = isTablet)
+                    SettingsNavigationRow(
+                        title = stringResource(Res.string.about_instagram_title),
+                        description = stringResource(Res.string.about_instagram_description),
+                        icon = Icons.Rounded.AccountCircle,
+                        isTablet = isTablet,
+                        onClick = { uriHandler.openUri(RAI_TV_INSTAGRAM_URL) },
                     )
                     if (onCheckForUpdatesClick != null) {
                         SettingsGroupDivider(isTablet = isTablet)
