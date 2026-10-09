@@ -2319,6 +2319,303 @@ std::shared_ptr<WindowsMpvWebPlayer> playerFromHandle(jlong handle) {
     return holder ? *holder : nullptr;
 }
 
+// ============ LIVE WebView (standalone WebView2 for Smartcric + ad blocking) ============
+
+// Ad/tracker/popup domains blocked at network level.
+static const wchar_t *kLiveAdBlockDomains[] = {
+    L"doubleclick.net",
+    L"googlesyndication.com",
+    L"googleadservices.com",
+    L"google-analytics.com",
+    L"adservice.google.com",
+    L"popads.net",
+    L"popcash.net",
+    L"adcash.com",
+    L"propellerads.com",
+    L"adsterra.com",
+    L"exoclick.com",
+    L"hilltopads.net",
+    L"clickadu.com",
+    L"mgid.com",
+    L"revcontent.com",
+    L"outbrain.com",
+    L"taboola.com",
+    L"criteo.com",
+    L"facebook.net",
+    nullptr,
+};
+
+static bool isLiveAdUrl(const std::wstring &url) {
+    std::wstring lower = url;
+    std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
+    for (const wchar_t **d = kLiveAdBlockDomains; *d; ++d) {
+        if (lower.find(*d) != std::wstring::npos) return true;
+    }
+    return false;
+}
+
+// JS injected after each navigation: kills popups, removes ad DOM nodes,
+// and watches for dynamically injected ads.
+static const wchar_t *kLiveAdCleanupJs =
+    L"(function(){"
+    L"window.open=function(){return null;};"
+    L"var sels=["
+    L"'iframe[src*=\"doubleclick\"]','iframe[src*=\"googlesyndication\"]',"
+    L"'iframe[src*=\"adsterra\"]','iframe[src*=\"popads\"]','iframe[src*=\"popcash\"]',"
+    L"'iframe[src*=\"propellerads\"]','iframe[src*=\"exoclick\"]','iframe[src*=\"hilltopads\"]',"
+    L"'div[id*=\"banner-ad\"]','div[class*=\"banner-ad\"]','div[id*=\"popup\"]',"
+    L"'div[class*=\"popup-overlay\"]','.ad-container','#ad-container','.advertisement'];"
+    L"function clean(){try{sels.forEach(function(s){"
+    L"document.querySelectorAll(s).forEach(function(el){el.remove();});});}catch(e){}}"
+    L"clean();"
+    L"try{new MutationObserver(clean).observe(document.documentElement,"
+    L"{childList:true,subtree:true});}catch(e){}"
+    L"var n=0;var t=setInterval(function(){clean();if(++n>10)clearInterval(t);},1000);"
+    L"})();";
+
+class WindowsLiveWebView : public std::enable_shared_from_this<WindowsLiveWebView> {
+public:
+    void initialize(HWND host, const std::string &startUrl) {
+        if (!host || !IsWindow(host)) {
+            throw std::runtime_error("Unable to resolve the AWT host HWND for LIVE WebView.");
+        }
+        hostHwnd = host;
+        url = startUrl;
+
+        auto initState = std::make_shared<InitState>();
+        auto self = shared_from_this();
+        uiThread = std::thread([self, initState]() { self->runUiThread(initState); });
+
+        std::unique_lock<std::mutex> lock(initState->mutex);
+        initState->cv.wait(lock, [&]() { return initState->complete; });
+        if (!initState->failure.empty()) {
+            lock.unlock();
+            if (uiThread.joinable()) uiThread.join();
+            throw std::runtime_error(initState->failure);
+        }
+    }
+
+    void shutdown() {
+        {
+            std::lock_guard<std::mutex> lock(stateMutex);
+            if (shuttingDown) return;
+            shuttingDown = true;
+        }
+        if (uiThreadId != 0) {
+            PostThreadMessageW(uiThreadId, WM_QUIT, 0, 0);
+        }
+        if (uiThread.joinable()) {
+            uiThread.join();
+        }
+    }
+
+    void layout() {
+        std::lock_guard<std::mutex> lock(stateMutex);
+        if (!controller || !containerHwnd || !IsWindow(containerHwnd)) return;
+        RECT bounds = {};
+        GetClientRect(hostHwnd, &bounds);
+        LONG w = std::max<LONG>(1, bounds.right - bounds.left);
+        LONG h = std::max<LONG>(1, bounds.bottom - bounds.top);
+        SetWindowPos(containerHwnd, nullptr, 0, 0, w, h, SWP_NOZORDER | SWP_NOACTIVATE);
+        RECT webBounds = {0, 0, w, h};
+        controller->put_Bounds(webBounds);
+        controller->put_IsVisible(TRUE);
+    }
+
+private:
+    struct InitState {
+        std::mutex mutex;
+        std::condition_variable cv;
+        bool complete = false;
+        std::string failure;
+    };
+
+    HWND hostHwnd = nullptr;
+    HWND containerHwnd = nullptr;
+    std::string url;
+    std::thread uiThread;
+    DWORD uiThreadId = 0;
+    std::mutex stateMutex;
+    bool shuttingDown = false;
+    bool oleInitialized = false;
+
+    ComPtr<ICoreWebView2Environment> environment;
+    ComPtr<ICoreWebView2Controller> controller;
+    ComPtr<ICoreWebView2> webView;
+    EventRegistrationToken resourceToken = {};
+    EventRegistrationToken navigationToken = {};
+    EventRegistrationToken newWindowToken = {};
+
+    void runUiThread(std::shared_ptr<InitState> initState) {
+        std::string failure;
+        try {
+            initOnUiThread();
+        } catch (const std::exception &e) {
+            failure = e.what();
+            cleanup();
+        }
+        {
+            std::lock_guard<std::mutex> lock(initState->mutex);
+            initState->failure = failure;
+            initState->complete = true;
+        }
+        initState->cv.notify_one();
+        if (!failure.empty()) return;
+
+        MSG msg = {};
+        while (GetMessageW(&msg, nullptr, 0, 0) > 0) {
+            TranslateMessage(&msg);
+            DispatchMessageW(&msg);
+        }
+        cleanup();
+    }
+
+    void initOnUiThread() {
+        registerWindowClasses();
+        uiThreadId = GetCurrentThreadId();
+        if (FAILED(OleInitialize(nullptr))) {
+            throw std::runtime_error("OleInitialize failed for LIVE WebView.");
+        }
+        oleInitialized = true;
+
+        RECT bounds = {};
+        GetClientRect(hostHwnd, &bounds);
+        LONG w = std::max<LONG>(1, bounds.right - bounds.left);
+        LONG h = std::max<LONG>(1, bounds.bottom - bounds.top);
+
+        containerHwnd = CreateWindowExW(
+            0, kContainerWindowClass, L"",
+            WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+            0, 0, w, h, hostHwnd, nullptr, gModule, nullptr);
+        if (!containerHwnd) {
+            throw std::runtime_error("Unable to create LIVE WebView container window.");
+        }
+
+        std::wstring userDataDir = webViewUserDataDirectory();
+        auto weakSelf = weak_from_this();
+        HRESULT hr = CreateCoreWebView2EnvironmentWithOptions(
+            nullptr, userDataDir.c_str(), nullptr,
+            Callback<ICoreWebView2CreateCoreWebView2EnvironmentCompletedHandler>(
+                [weakSelf](HRESULT envResult, ICoreWebView2Environment *env) -> HRESULT {
+                    auto self = weakSelf.lock();
+                    if (!self) return S_OK;
+                    if (FAILED(envResult) || !env) return S_OK;
+                    self->environment = env;
+                    self->createController();
+                    return S_OK;
+                }).Get());
+        if (FAILED(hr)) {
+            throw std::runtime_error("CreateCoreWebView2EnvironmentWithOptions failed for LIVE WebView.");
+        }
+    }
+
+    void createController() {
+        auto weakSelf = weak_from_this();
+        environment->CreateCoreWebView2Controller(
+            containerHwnd,
+            Callback<ICoreWebView2CreateCoreWebView2ControllerCompletedHandler>(
+                [weakSelf](HRESULT res, ICoreWebView2Controller *c) -> HRESULT {
+                    auto self = weakSelf.lock();
+                    if (!self || FAILED(res) || !c) return S_OK;
+                    self->controller = c;
+                    c->get_CoreWebView2(&self->webView);
+                    if (!self->webView) return S_OK;
+                    self->setupAdBlocking();
+                    self->layout();
+
+                    // Block new windows (popups) — keep everything in this view.
+                    self->webView->add_NewWindowRequested(
+                        Callback<ICoreWebView2NewWindowRequestedEventHandler>(
+                            [](ICoreWebView2 *, ICoreWebView2NewWindowRequestedEventArgs *args) -> HRESULT {
+                                if (args) args->put_Handled(TRUE);
+                                return S_OK;
+                            }).Get(),
+                        &self->newWindowToken);
+
+                    // Inject ad-cleanup JS after each navigation.
+                    auto navWeak = weakSelf;
+                    self->webView->add_NavigationCompleted(
+                        Callback<ICoreWebView2NavigationCompletedEventHandler>(
+                            [navWeak](ICoreWebView2 *, ICoreWebView2NavigationCompletedEventArgs *) -> HRESULT {
+                                auto s = navWeak.lock();
+                                if (s && s->webView) {
+                                    s->webView->ExecuteScript(kLiveAdCleanupJs, nullptr);
+                                }
+                                return S_OK;
+                            }).Get(),
+                        &self->navigationToken);
+
+                    std::wstring wurl = toWide(self->url);
+                    self->webView->Navigate(wurl.c_str());
+                    return S_OK;
+                }).Get());
+    }
+
+    void setupAdBlocking() {
+        if (!webView) return;
+        // Intercept all resource requests; block known ad/tracker domains.
+        webView->AddWebResourceRequestedFilter(
+            L"*", COREWEBVIEW2_WEB_RESOURCE_CONTEXT_ALL);
+        auto envWeak = weak_from_this();
+        webView->add_WebResourceRequested(
+            Callback<ICoreWebView2WebResourceRequestedEventHandler>(
+                [envWeak](ICoreWebView2 *, ICoreWebView2WebResourceRequestedEventArgs *args) -> HRESULT {
+                    auto self = envWeak.lock();
+                    if (!self || !args) return S_OK;
+                    ComPtr<ICoreWebView2WebResourceRequest> request;
+                    if (FAILED(args->get_Request(&request)) || !request) return S_OK;
+                    LPWSTR uri = nullptr;
+                    if (FAILED(request->get_Uri(&uri)) || !uri) return S_OK;
+                    std::wstring urlStr(uri);
+                    CoTaskMemFree(uri);
+                    if (isLiveAdUrl(urlStr) && self->environment) {
+                        ComPtr<ICoreWebView2WebResourceResponse> blocked;
+                        if (SUCCEEDED(self->environment->CreateWebResourceResponse(
+                                nullptr, 403, L"Blocked", L"", &blocked)) && blocked) {
+                            args->put_Response(blocked.Get());
+                        }
+                    }
+                    return S_OK;
+                }).Get(),
+            &resourceToken);
+    }
+
+    void cleanup() {
+        if (webView && resourceToken.value != 0) {
+            webView->remove_WebResourceRequested(resourceToken);
+            resourceToken.value = 0;
+        }
+        if (webView && navigationToken.value != 0) {
+            webView->remove_NavigationCompleted(navigationToken);
+            navigationToken.value = 0;
+        }
+        if (webView && newWindowToken.value != 0) {
+            webView->remove_NewWindowRequested(newWindowToken);
+            newWindowToken.value = 0;
+        }
+        if (controller) {
+            controller->Close();
+            controller.Reset();
+        }
+        webView.Reset();
+        environment.Reset();
+        if (containerHwnd) {
+            DestroyWindow(containerHwnd);
+            containerHwnd = nullptr;
+        }
+        if (oleInitialized) {
+            OleUninitialize();
+            oleInitialized = false;
+        }
+    }
+};
+
+std::shared_ptr<WindowsLiveWebView> liveWebViewFromHandle(jlong handle) {
+    if (handle == 0) return nullptr;
+    auto *holder = reinterpret_cast<std::shared_ptr<WindowsLiveWebView> *>(handle);
+    return holder ? *holder : nullptr;
+}
+
 } // namespace
 
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
@@ -2327,6 +2624,56 @@ BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
         DisableThreadLibraryCalls(module);
     }
     return TRUE;
+}
+
+// ============ LIVE WebView JNI ============
+
+extern "C" JNIEXPORT jlong JNICALL
+Java_com_nuvio_app_features_live_desktop_LiveWebViewBridge_createLiveWebView(
+    JNIEnv *env,
+    jobject,
+    jlong hostViewPtr,
+    jstring startUrl
+) {
+    HWND hostHwnd = (HWND)(intptr_t)hostViewPtr;
+    std::string url = jstringToUtf8(env, startUrl);
+
+    auto view = std::make_shared<WindowsLiveWebView>();
+    try {
+        view->initialize(hostHwnd, url);
+    } catch (const std::exception &error) {
+        throwJavaError(env, error.what());
+        return 0;
+    }
+
+    auto *holder = new std::shared_ptr<WindowsLiveWebView>(view);
+    return (jlong)(intptr_t)holder;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_live_desktop_LiveWebViewBridge_disposeLiveWebView(
+    JNIEnv *,
+    jobject,
+    jlong handle
+) {
+    auto view = liveWebViewFromHandle(handle);
+    auto *holder = reinterpret_cast<std::shared_ptr<WindowsLiveWebView> *>(handle);
+    if (view) {
+        view->shutdown();
+    }
+    delete holder;
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_nuvio_app_features_live_desktop_LiveWebViewBridge_layoutLiveWebView(
+    JNIEnv *,
+    jobject,
+    jlong handle
+) {
+    auto view = liveWebViewFromHandle(handle);
+    if (view) {
+        view->layout();
+    }
 }
 
 extern "C" JNIEXPORT jlong JNICALL
