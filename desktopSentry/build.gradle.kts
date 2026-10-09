@@ -27,3 +27,10 @@ sentry {
         enabled.set(false)
     }
 }
+
+// Skip Sentry upload tasks when no valid token is configured.
+if (sentryAuthToken == null) {
+    tasks.matching { it.name.startsWith("sentryUpload") || it.name.startsWith("sentryCollect") || it.name.startsWith("sentryBundle") }.configureEach {
+        enabled = false
+    }
+}
