@@ -6,7 +6,7 @@ plugins {
 val sentryAuthToken = providers.environmentVariable("SENTRY_AUTH_TOKEN")
     .orNull
     ?.trim()
-    ?.takeIf { it.isNotBlank() }
+    ?.takeIf { it.isNotBlank() && it != "placeholder" }
 
 sentry {
     includeSourceContext.set(true)
