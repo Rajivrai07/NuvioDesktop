@@ -46,18 +46,18 @@ internal fun SettingsAttribution(
             textAlign = TextAlign.Center,
         )
         Text(
-            text = stringResource(
-                Res.string.compose_about_version_format,
-                AppVersionPolicy.displayVersionName,
-                AppVersionPolicy.displayVersionCode,
-            ),
+            text = stringResource(Res.string.compose_about_developer),
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
         )
         Text(
-            text = stringResource(Res.string.compose_about_developer),
+            text = stringResource(
+                Res.string.compose_about_version_format,
+                AppVersionPolicy.displayVersionName,
+                AppVersionPolicy.displayVersionCode,
+            ),
             modifier = Modifier.fillMaxWidth(),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,

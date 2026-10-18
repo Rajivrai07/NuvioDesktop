@@ -35,7 +35,6 @@ import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Home
-import androidx.compose.material.icons.filled.LiveTv
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -78,7 +77,6 @@ import com.nuvio.app.features.library.LibraryItem
 import com.nuvio.app.features.library.LibraryScreen
 import com.nuvio.app.features.library.LibrarySection
 import com.nuvio.app.features.library.LibrarySortOption
-import com.nuvio.app.features.live.LiveScreen
 import com.nuvio.app.features.player.PlayerBackReleaseGuard
 import com.nuvio.app.features.player.PlayerBackRequest
 import com.nuvio.app.features.profiles.ActiveProfileMiniAvatar
@@ -278,12 +276,6 @@ internal fun AppTabHost(
                     onConnectCloudClick = actions.onConnectCloudClick,
                     onDownloadsClick = actions.onDownloadsClick,
                     disintegrationRequest = state.libraryDisintegrationRequest,
-                )
-            }
-
-            AppScreenTab.Live -> {
-                LiveScreen(
-                    modifier = Modifier.fillMaxSize(),
                 )
             }
 
@@ -571,28 +563,6 @@ internal fun TabletFloatingTopBar(
                                 contentDescription = stringResource(Res.string.compose_nav_library),
                                 modifier = Modifier.size(navIconSize),
                                 tint = if (selectedTab == AppScreenTab.Library) {
-                                    tokens.colors.textPrimary
-                                } else {
-                                    Color.White.copy(alpha = 0.70f)
-                                },
-                            )
-                        },
-                    )
-                    TabletTopPillItem(
-                        label = stringResource(Res.string.compose_nav_live),
-                        selected = selectedTab == AppScreenTab.Live,
-                        onClick = { onTabSelected(AppScreenTab.Live) },
-                        labelFraction = labelFraction,
-                        pillHeight = pillHeight,
-                        expandedHorizontalPadding = expandedHorizontalPadding,
-                        collapsedHorizontalPadding = iconCollapsedPadding,
-                        textStyle = labelTextStyle,
-                        icon = {
-                            Icon(
-                                imageVector = Icons.Filled.LiveTv,
-                                contentDescription = stringResource(Res.string.compose_nav_live),
-                                modifier = Modifier.size(navIconSize),
-                                tint = if (selectedTab == AppScreenTab.Live) {
                                     tokens.colors.textPrimary
                                 } else {
                                     Color.White.copy(alpha = 0.70f)

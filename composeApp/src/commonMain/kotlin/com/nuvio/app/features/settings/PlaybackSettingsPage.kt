@@ -250,9 +250,8 @@ private fun SettingsSliderRow(
             valueRange = valueRange.first.toFloat()..valueRange.last.toFloat(),
             steps = calculateSteps(valueRange.first.toFloat(), valueRange.last.toFloat(), step.toFloat()),
             colors = SliderDefaults.colors(
-                thumbColor = NuvioTokens.Glass.content,
-                activeTrackColor = Color.White.copy(alpha = 0.85f),
-                inactiveTrackColor = NuvioTokens.Glass.fillStrong,
+                thumbColor = MaterialTheme.colorScheme.primary,
+                activeTrackColor = MaterialTheme.colorScheme.primary,
             ),
             modifier = Modifier.fillMaxWidth(),
         )

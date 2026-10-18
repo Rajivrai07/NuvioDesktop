@@ -1285,7 +1285,7 @@ compose.desktop {
                 "jdk.unsupported",
             )
             macOS {
-                bundleID = "com.raitv.desktop"
+                bundleID = "com.nuvio.media.desktop"
                 iconFile.set(project.file("src/desktopMain/resources/icons/nuvio-app-icon-transparent.icns"))
                 infoPlist {
                     extraKeysRawXml = """
@@ -1293,10 +1293,10 @@ compose.desktop {
                         <array>
                             <dict>
                                 <key>CFBundleURLName</key>
-                                <string>com.raitv.desktop</string>
+                                <string>com.nuvio.media.desktop</string>
                                 <key>CFBundleURLSchemes</key>
                                 <array>
-                                    <string>raitv</string>
+                                    <string>nuvio</string>
                                     <string>stremio</string>
                                 </array>
                             </dict>
@@ -1544,7 +1544,7 @@ if (isLinuxHost) {
             ?: System.getenv("APPIMAGE_WEBSITE_URL")?.takeIf { it.isNotBlank() }
 
         val distributionName = if (release) "main-release" else "main"
-        val appImageName = "RAI TV-Linux-$linuxAppImageArch-$desktopReleaseVersionName.AppImage"
+        val appImageName = "Nuvio-Linux-$linuxAppImageArch-$desktopReleaseVersionName.AppImage"
         val outputAppImage = layout.buildDirectory
             .dir("compose/binaries/$distributionName/app")
             .get()
