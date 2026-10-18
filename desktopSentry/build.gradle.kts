@@ -6,7 +6,7 @@ plugins {
 val sentryAuthToken = providers.environmentVariable("SENTRY_AUTH_TOKEN")
     .orNull
     ?.trim()
-    ?.takeIf { it.isNotBlank() }
+    ?.takeIf { it.isNotBlank() && it != "placeholder" }
 
 sentry {
     includeSourceContext.set(true)
@@ -25,5 +25,12 @@ sentry {
     sentryAuthToken?.let(authToken::set)
     autoInstallation {
         enabled.set(false)
+    }
+}
+
+// Skip Sentry upload tasks when no valid token is configured.
+if (sentryAuthToken == null) {
+    tasks.matching { it.name.startsWith("sentryUpload") || it.name.startsWith("sentryCollect") || it.name.startsWith("sentryBundle") }.configureEach {
+        enabled = false
     }
 }
