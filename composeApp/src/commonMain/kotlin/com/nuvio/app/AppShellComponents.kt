@@ -579,7 +579,7 @@ internal fun TabletFloatingTopBar(
                         },
                     )
                     TabletTopPillItem(
-                        label = stringResource(Res.string.compose_nav_live),
+                        label = "LIVE",
                         selected = selectedTab == AppScreenTab.Live,
                         onClick = { onTabSelected(AppScreenTab.Live) },
                         labelFraction = labelFraction,
@@ -590,7 +590,7 @@ internal fun TabletFloatingTopBar(
                         icon = {
                             Icon(
                                 imageVector = Icons.Filled.LiveTv,
-                                contentDescription = stringResource(Res.string.compose_nav_live),
+                                contentDescription = "LIVE",
                                 modifier = Modifier.size(navIconSize),
                                 tint = if (selectedTab == AppScreenTab.Live) {
                                     tokens.colors.textPrimary
