@@ -1329,6 +1329,7 @@ compose.desktop {
                 menuGroup = "RAI TV"
             }
             linux {
+                packageName = "nuvio"
                 iconFile.set(project.file("src/desktopMain/resources/icons/nuvio-app-icon-transparent.png"))
                 debMaintainer = "contact@nuvio.tv"
                 shortcut = true
@@ -1348,8 +1349,8 @@ fun renameMacosDmgOutput(release: Boolean) {
 
     val distributionName = if (release) "main-release" else "main"
     val outputDir = layout.buildDirectory.dir("compose/binaries/$distributionName/dmg").get().asFile
-    val finalDmg = outputDir.resolve("RAI TV-macOS-$macosDmgArchName-$desktopReleaseVersionName.dmg")
-    val defaultDmg = outputDir.resolve("RAI TV-$desktopReleasePackageVersion.dmg")
+    val finalDmg = outputDir.resolve("Nuvio-macOS-$macosDmgArchName-$desktopReleaseVersionName.dmg")
+    val defaultDmg = outputDir.resolve("Nuvio-$desktopReleasePackageVersion.dmg")
     val sourceDmg = defaultDmg.takeIf { it.exists() }
         ?: finalDmg.takeIf { it.exists() }
         ?: error("Expected macOS DMG output in ${outputDir.absolutePath}")
@@ -1385,8 +1386,8 @@ fun publishWindowsMsiOutput(release: Boolean) {
 
     val distributionName = if (release) "main-release" else "main"
     val outputDir = layout.buildDirectory.dir("compose/binaries/$distributionName/msi").get().asFile
-    val finalMsi = outputDir.resolve("RAI TV-Windows-$windowsPlayerBridgeArch-$desktopReleaseVersionName.msi")
-    val defaultMsi = outputDir.resolve("RAI TV-$desktopReleasePackageVersion.msi")
+    val finalMsi = outputDir.resolve("Nuvio-Windows-$windowsPlayerBridgeArch-$desktopReleaseVersionName.msi")
+    val defaultMsi = outputDir.resolve("Nuvio-$desktopReleasePackageVersion.msi")
     val sourceMsi = defaultMsi.takeIf { it.exists() }
         ?: finalMsi.takeIf { it.exists() }
         ?: error("Expected Windows MSI output in ${outputDir.absolutePath}")
@@ -1544,7 +1545,7 @@ if (isLinuxHost) {
             ?: System.getenv("APPIMAGE_WEBSITE_URL")?.takeIf { it.isNotBlank() }
 
         val distributionName = if (release) "main-release" else "main"
-        val appImageName = "RAI TV-Linux-$linuxAppImageArch-$desktopReleaseVersionName.AppImage"
+        val appImageName = "Nuvio-Linux-$linuxAppImageArch-$desktopReleaseVersionName.AppImage"
         val outputAppImage = layout.buildDirectory
             .dir("compose/binaries/$distributionName/app")
             .get()
@@ -1578,6 +1579,23 @@ if (isLinuxHost) {
         }
         logger.lifecycle("Published Linux AppImage artifact: ${publishedAppImage.absolutePath}")
     }
+    // Compat: release workflow expects the Linux app bundle at app/Nuvio.
+    tasks.findByName("createReleaseDistributable")?.let { distributableTask ->
+        distributableTask.doLast {
+            val appBase = layout.buildDirectory.dir("compose/binaries/main-release/app").get().asFile
+            val realBundle = listOf("nuvio", "Nuvio", "rai-tv", "RAI TV")
+                .map { appBase.resolve(it) }
+                .firstOrNull { it.isDirectory }
+            if (realBundle != null && realBundle.name != "Nuvio") {
+                val compatLink = appBase.resolve("Nuvio")
+                if (!compatLink.exists()) {
+                    java.nio.file.Files.createSymbolicLink(compatLink.toPath(), realBundle.toPath())
+                    logger.lifecycle("Created compat bundle symlink: ${compatLink} -> ${realBundle}")
+                }
+            }
+        }
+    }
+
 
     tasks.withType<AbstractJPackageTask>()
         .matching { it.name == "packageDeb" || it.name == "packageReleaseDeb" }
@@ -1653,8 +1671,8 @@ if (isMacHost) {
         dependsOn("packageReleaseDmg")
         dmgDir.set(layout.buildDirectory.dir("compose/binaries/main-release/dmg"))
         artifactDir.set(layout.buildDirectory.dir("compose/release-dmgs"))
-        finalDmgName.set("RAI TV-macOS-$macosDmgArchName-$desktopReleaseVersionName.dmg")
-        defaultDmgName.set("RAI TV-$desktopReleasePackageVersion.dmg")
+        finalDmgName.set("Nuvio-macOS-$macosDmgArchName-$desktopReleaseVersionName.dmg")
+        defaultDmgName.set("Nuvio-$desktopReleasePackageVersion.dmg")
         keychainProfile.set(macosNotaryKeychainProfile.orEmpty())
         keychainPath.set(macosNotaryKeychainPath.orEmpty())
         signingIdentity.set(macosSigningIdentity.orEmpty())
