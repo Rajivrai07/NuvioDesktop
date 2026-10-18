@@ -21,6 +21,7 @@ import org.jetbrains.kotlin.gradle.tasks.KotlinCompilationTask
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.util.Properties
+import java.nio.file.Files
 import javax.inject.Inject
 
 abstract class GenerateRuntimeConfigsTask : DefaultTask() {
@@ -1589,7 +1590,7 @@ if (isLinuxHost) {
             if (realBundle != null && realBundle.name != "Nuvio") {
                 val compatLink = appBase.resolve("Nuvio")
                 if (!compatLink.exists()) {
-                    java.nio.file.Files.createSymbolicLink(compatLink.toPath(), realBundle.toPath())
+                    Files.createSymbolicLink(compatLink.toPath(), realBundle.toPath())
                     logger.lifecycle("Created compat bundle symlink: ${compatLink} -> ${realBundle}")
                 }
             }
