@@ -1583,7 +1583,7 @@ if (isLinuxHost) {
         .matching { it.name == "packageDeb" || it.name == "packageReleaseDeb" }
         .configureEach {
             doLast {
-                val effectiveLinuxPackageName = linuxPackageName.orNull ?: packageName.get().lowercase()
+                val effectiveLinuxPackageName = linuxPackageName.orNull ?: packageName.get().lowercase().replace(" ", "-")
                 val effectiveLinuxAppRelease = linuxAppRelease.orNull ?: "1"
                 val artifactPrefix =
                     "${effectiveLinuxPackageName}_${packageVersion.get()}-${effectiveLinuxAppRelease}_"
@@ -1609,7 +1609,7 @@ if (isLinuxHost) {
         .matching { it.name == "packageRpm" || it.name == "packageReleaseRpm" }
         .configureEach {
             doLast {
-                val effectiveLinuxPackageName = linuxPackageName.orNull ?: packageName.get().lowercase()
+                val effectiveLinuxPackageName = linuxPackageName.orNull ?: packageName.get().lowercase().replace(" ", "-")
                 val effectiveLinuxAppRelease = linuxAppRelease.orNull ?: "1"
                 val artifactPrefix =
                     "${effectiveLinuxPackageName}-${packageVersion.get()}-${effectiveLinuxAppRelease}."
